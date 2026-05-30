@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CloudVault - 私有云管理</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <link rel="stylesheet" href="styles.css?v=2">
+</head>
+<body>
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <h2>登录 CloudVault</h2>
+            <form id="loginForm">
+                <input type="text" id="loginUsername" placeholder="用户名" required>
+                <input type="password" id="loginPassword" placeholder="密码" required>
+                <button type="submit">登录</button>
+            </form>
+            <p class="toggle-form">没有账号？<a href="#" id="showRegister">注册新账号</a></p>
+        </div>
+    </div>
+
+    <!-- Register Modal -->
+    <div id="registerModal" class="modal" style="display:none">
+        <div class="modal-content">
+            <h2>注册 CloudVault</h2>
+            <form id="registerForm">
+                <input type="text" id="regUsername" placeholder="用户名" required>
+                <input type="password" id="regPassword" placeholder="密码" required>
+                <button type="submit">注册</button>
+            </form>
+            <p class="toggle-form">已有账号？<a href="#" id="showLogin">去登录</a></p>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="app" class="hidden">
+        <!-- Header -->
+        <header>
+            <div class="header-left">
+                <h1>☁️ CloudVault</h1>
+                <span id="userInfo"></span>
+            </div>
+            <div class="header-right">
+                <button id="settingsBtn" class="btn-secondary" title="设置API地址">⚙️</button>
+                <button id="logoutBtn" class="btn-secondary">退出登录</button>
+            </div>
+        </header>
+
+        <div class="container">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <nav>
+                    <a href="#" class="nav-item active" data-view="files">
+                        <span class="icon">📁</span> 文件管理
+                    </a>
+                    <a href="#" class="nav-item" data-view="shares">
+                        <span class="icon">🔗</span> 我的分享
+                    </a>
+                    <a href="#" class="nav-item admin-only" data-view="users">
+                        <span class="icon">👥</span> 用户管理
+                    </a>
+                </nav>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="content">
+                <!-- Files View -->
+                <div id="filesView" class="view">
+                    <div class="toolbar">
+                        <button id="createFolderBtn" class="btn-primary">📁 新建文件夹</button>
+                        <button id="uploadBtn" class="btn-primary">📤 上传文件</button>
+                        <input type="file" id="fileInput" style="display:none">
+                    </div>
+                    <div id="fileList" class="file-list"></div>
+                </div>
+
+                <!-- Shares View -->
+                <div id="sharesView" class="view hidden">
+                    <h3>我的分享链接</h3>
+                    <div id="shareList" class="share-list"></div>
+                </div>
+
+                <!-- Users View (Admin Only) -->
+                <div id="usersView" class="view hidden admin-only">
+                    <h3>用户管理</h3>
+                    <div id="userList" class="user-list"></div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div id="contextMenu" class="context-menu hidden">
+        <ul>
+            <li id="ctxOpen">打开</li>
+            <li id="ctxRename">重命名</li>
+            <li id="ctxShare">创建分享链接</li>
+            <li id="ctxMove">移动到...</li>
+            <li class="divider"></li>
+            <li id="ctxDelete" class="danger">删除</li>
+        </ul>
+    </div>
+
+    <!-- Move Modal -->
+    <div id="moveModal" class="modal hidden">
+        <div class="modal-content">
+            <h3>移动到...</h3>
+            <div id="folderTree" class="folder-tree"></div>
+            <div class="modal-buttons">
+                <button id="moveToRootBtn" class="btn-secondary">移至根目录</button>
+                <button id="cancelMoveBtn" class="btn-secondary">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Share Modal -->
+    <div id="shareModal" class="modal hidden">
+        <div class="modal-content">
+            <h3>创建分享链接</h3>
+            <p id="shareFileName"></p>
+            <select id="sharePermissions">
+                <option value="read">只读</option>
+                <option value="write">读写</option>
+            </select>
+            <div class="modal-buttons">
+                <button id="createShareBtn" class="btn-primary">创建</button>
+                <button id="cancelShareBtn" class="btn-secondary">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast" class="toast hidden"></div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal hidden">
+        <div class="modal-content">
+            <h3>⚙️ API 设置</h3>
+            <p style="color:#64748b;margin-bottom:1rem;font-size:0.9rem;">当前服务器地址</p>
+            <input type="text" id="apiUrlInput" placeholder="http://192.168.1.100:8080">
+            <div class="modal-buttons">
+                <button id="saveApiBtn" class="btn-primary">保存</button>
+                <button id="cancelApiBtn" class="btn-secondary">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js?v=10"></script>
+</body>
+</html>

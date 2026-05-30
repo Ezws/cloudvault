@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>CloudVault Debug</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #0f0; }
+        h1 { color: #0ff; }
+        .box { background: #333; padding: 15px; margin: 10px 0; border-radius: 8px; }
+        button { background: #0f0; color: #000; padding: 10px 20px; border: none; cursor: pointer; margin: 5px; }
+        button:hover { background: #0a0; }
+        .error { color: #f00; }
+        .success { color: #0f0; }
+        pre { background: #222; padding: 10px; overflow-x: auto; }
+        input { padding: 10px; width: 100%; margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <h1>🔧 CloudVault Debug Tool</h1>
+    
+    <div class="box">
+        <h3>1. API Server URL</h3>
+        <input type="text" id="apiUrl" value="http://100.82.26.120:8080" style="width:300px;">
+    </div>
+
+    <div class="box">
+        <h3>2. Token in localStorage</h3>
+        <div id="tokenDisplay">Loading...</div>
+        <button onclick="showToken()">Show Token</button>
+        <button onclick="clearToken()">Clear Token</button>
+    </div>
+
+    <div class="box">
+        <h3>3. Test Login</h3>
+        <input type="text" id="username" value="admin" placeholder="Username">
+        <input type="password" id="password" value="admin123" placeholder="Password">
+        <br>
+        <button onclick="doLogin()">Login</button>
+    </div>
+
+    <div class="box">
+        <h3>4. Test API Request</h3>
+        <button onclick="testFiles()">GET /api/files</button>
+        <button onclick="testMe()">GET /api/auth/me</button>
+        <button onclick="testVerify()">GET /debug/verify-token</button>
+        <pre id="apiResult">Click a button to test...</pre>
+    </div>
+
+    <div class="box">
+        <h3>5. Console Logs</h3>
+        <pre id="consoleLog"></pre>
+    </div>
+
+    <script>
+        const log = document.getElementById('consoleLog');
+        const tokenDisplay = document.getElementById('tokenDisplay');
+        const apiResult = document.getElementById('apiResult');
+        const apiUrlInput = document.getElementById('apiUrl');
+
+        function addLog(msg) {
+            log.textContent += new Date().toISOString() + ' ' + msg + '\n';
+            console.log(msg);
+        }
+
+        function getApiBase() {
+            return apiUrlInput.value;
+        }
+
+        function getToken() {
+            return localStorage.getItem('cloudvault_token');
+        }
+
+        function showToken() {
+            const token = getToken();
+            if (token) {
+                tokenDisplay.innerHTML = `<span class="success">Token exists: ${token.substring(0, 50)}...</span>`;
+                addLog('Token: ' + token.substring(0, 50) + '...');
+            } else {
+                tokenDisplay.innerHTML = '<span class="error">No token in localStorage</span>';
+                addLog('No token found');
+            }
+        }
+
+        function clearToken() {
+            localStorage.removeItem('cloudvault_token');
+            localStorage.removeItem('cloudvault_user');
+            tokenDisplay.innerHTML = '<span class="error">Token cleared</span>';
+            addLog('Token cleared');
+            showToken();
+        }
+
+        async function doLogin() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            addLog(`Login attempt: ${username}`);
+            apiResult.textContent = 'Logging in...';
+            
+            try {
+                const res = await fetch(`${getApiBase()}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                addLog(`Login response status: ${res.status}`);
+                const data = await res.json();
+                apiResult.textContent = JSON.stringify(data, null, 2);
+                
+                if (res.ok && data.token) {
+                    addLog('Login success! Saving token to localStorage');
+                    localStorage.setItem('cloudvault_token', data.token);
+                    localStorage.setItem('cloudvault_user', JSON.stringify(data.user));
+                    showToken();
+                } else {
+                    addLog('Login failed: ' + data.message);
+                }
+            } catch (err) {
+                apiResult.textContent = 'Error: ' + err.message;
+                addLog('Login error: ' + err.message);
+            }
+        }
+
+        async function testFiles() {
+            const token = getToken();
+            if (!token) {
+                apiResult.textContent = 'No token! Please login first.';
+                return;
+            }
+            
+            addLog('Testing /api/files with token');
+            apiResult.textContent = 'Loading...';
+            
+            try {
+                const res = await fetch(`${getApiBase()}/api/files`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                addLog(`Files response status: ${res.status}`);
+                const data = await res.json();
+                
+                if (res.ok) {
+                    apiResult.textContent = JSON.stringify(data, null, 2);
+                    addLog('Files loaded: ' + data.length + ' items');
+                } else {
+                    apiResult.innerHTML = `<span class="error">Error ${res.status}: ${JSON.stringify(data)}</span>`;
+                    addLog('Files error: ' + JSON.stringify(data));
+                }
+            } catch (err) {
+                apiResult.textContent = 'Error: ' + err.message;
+                addLog('Files error: ' + err.message);
+            }
+        }
+
+        async function testMe() {
+            const token = getToken();
+            if (!token) {
+                apiResult.textContent = 'No token! Please login first.';
+                return;
+            }
+            
+            addLog('Testing /api/auth/me with token');
+            apiResult.textContent = 'Loading...';
+            
+            try {
+                const res = await fetch(`${getApiBase()}/api/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                addLog(`Me response status: ${res.status}`);
+                const data = await res.json();
+                apiResult.textContent = JSON.stringify(data, null, 2);
+                addLog('Me result: ' + JSON.stringify(data));
+            } catch (err) {
+                apiResult.textContent = 'Error: ' + err.message;
+                addLog('Me error: ' + err.message);
+            }
+        }
+
+        async function testVerify() {
+            const token = getToken();
+            if (!token) {
+                apiResult.textContent = 'No token! Please login first.';
+                return;
+            }
+            
+            addLog('Testing /debug/verify-token with token');
+            apiResult.textContent = 'Loading...';
+            
+            try {
+                const res = await fetch(`${getApiBase()}/debug/verify-token`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                addLog(`Verify response status: ${res.status}`);
+                const data = await res.json();
+                apiResult.textContent = JSON.stringify(data, null, 2);
+                addLog('Verify result: ' + JSON.stringify(data));
+            } catch (err) {
+                apiResult.textContent = 'Error: ' + err.message;
+                addLog('Verify error: ' + err.message);
+            }
+        }
+
+        // Initial load
+        showToken();
+        addLog('Debug page loaded');
+    </script>
+</body>
+</html>

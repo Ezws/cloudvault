@@ -1,0 +1,29 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+*.pdb
+
+# Environment / secrets (keep .env.example tracked)
+.env
+.env.local
+.env.*.local
+
+# Runtime-uploaded files (local storage backend)
+/storage/
+
+# Logs
+*.log
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Note: Cargo.lock is intentionally tracked — this is a binary/application,
+# so the lockfile is committed for reproducible builds.
