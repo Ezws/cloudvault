@@ -7,7 +7,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="styles.css?v=2">
+    <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
     <!-- Login Modal -->
@@ -38,14 +38,25 @@
 
     <!-- Main App -->
     <div id="app" class="hidden">
-        <!-- Header -->
         <header>
+            <div class="window-controls" aria-hidden="true">
+                <span class="traffic-dot close"></span>
+                <span class="traffic-dot minimize"></span>
+                <span class="traffic-dot zoom"></span>
+            </div>
             <div class="header-left">
-                <h1>☁️ CloudVault</h1>
-                <span id="userInfo"></span>
+                <div class="app-mark">CV</div>
+                <div>
+                    <h1>CloudVault</h1>
+                    <span id="userInfo"></span>
+                </div>
             </div>
             <div class="header-right">
-                <button id="settingsBtn" class="btn-secondary" title="设置API地址">⚙️</button>
+                <label class="search-field" aria-label="搜索">
+                    <span>⌕</span>
+                    <input type="search" placeholder="搜索文件">
+                </label>
+                <button id="settingsBtn" class="btn-secondary icon-only" title="设置API地址">⚙</button>
                 <button id="logoutBtn" class="btn-secondary">退出登录</button>
             </div>
         </header>
@@ -55,15 +66,23 @@
             <aside class="sidebar">
                 <nav>
                     <a href="#" class="nav-item active" data-view="files">
-                        <span class="icon">📁</span> 文件管理
+                        <span class="icon">▣</span> 文件管理
                     </a>
                     <a href="#" class="nav-item" data-view="shares">
-                        <span class="icon">🔗</span> 我的分享
+                        <span class="icon">↗</span> 我的分享
+                    </a>
+                    <a href="#" class="nav-item" data-view="transfers">
+                        <span class="icon">⇅</span> 传输
                     </a>
                     <a href="#" class="nav-item admin-only" data-view="users">
-                        <span class="icon">👥</span> 用户管理
+                        <span class="icon">◎</span> 用户管理
                     </a>
                 </nav>
+                <div class="sidebar-footer">
+                    <span>存储空间</span>
+                    <div class="storage-meter"><span></span></div>
+                    <strong>0 B / 10 GB</strong>
+                </div>
             </aside>
 
             <!-- Main Content -->
@@ -71,10 +90,15 @@
                 <!-- Files View -->
                 <div id="filesView" class="view">
                     <div class="toolbar">
-                        <button id="createFolderBtn" class="btn-primary">📁 新建文件夹</button>
-                        <button id="uploadBtn" class="btn-primary">📤 上传文件</button>
+                        <button id="createFolderBtn" class="btn-primary">＋ 新建文件夹</button>
+                        <button id="uploadBtn" class="btn-primary">⇧ 上传文件</button>
+                        <div class="view-toggle" aria-hidden="true">
+                            <span class="active">列表</span>
+                            <span>网格</span>
+                        </div>
                         <input type="file" id="fileInput" style="display:none">
                     </div>
+                    <div id="folderBreadcrumb" class="folder-breadcrumb"></div>
                     <div id="fileList" class="file-list"></div>
                 </div>
 
@@ -82,6 +106,15 @@
                 <div id="sharesView" class="view hidden">
                     <h3>我的分享链接</h3>
                     <div id="shareList" class="share-list"></div>
+                </div>
+
+                <!-- Transfers View -->
+                <div id="transfersView" class="view hidden">
+                    <div class="view-title-row">
+                        <h3>传输记录</h3>
+                        <button id="clearTransfersBtn" class="btn-secondary">清除已完成</button>
+                    </div>
+                    <div id="transferList" class="transfer-list"></div>
                 </div>
 
                 <!-- Users View (Admin Only) -->
@@ -149,6 +182,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=10"></script>
+    <script src="app.js?v=14"></script>
 </body>
 </html>

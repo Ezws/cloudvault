@@ -26,6 +26,11 @@ let shares = [];
 let users = [];
 let selectedFile = null;
 let isAdmin = false;
+let currentFolderId = null;
+let folderStack = [];
+let fileSearchQuery = '';
+let transferRecords = [];
+const CHUNK_SIZE = 1024 * 1024;
 
 // DOM Elements
 const loginModal = document.getElementById('loginModal');
@@ -33,7 +38,10 @@ const registerModal = document.getElementById('registerModal');
 const app = document.getElementById('app');
 const userInfo = document.getElementById('userInfo');
 const fileList = document.getElementById('fileList');
+const folderBreadcrumb = document.getElementById('folderBreadcrumb');
+const searchInput = document.querySelector('.search-field input');
 const shareList = document.getElementById('shareList');
+const transferList = document.getElementById('transferList');
 const userList = document.getElementById('userList');
 const contextMenu = document.getElementById('contextMenu');
 const toast = document.getElementById('toast');
@@ -70,6 +78,16 @@ function setupEventListeners() {
     document.getElementById('createFolderBtn').addEventListener('click', () => createFolder());
     document.getElementById('uploadBtn').addEventListener('click', () => document.getElementById('fileInput').click());
     document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+    const clearTransfersBtn = document.getElementById('clearTransfersBtn');
+    if (clearTransfersBtn) {
+        clearTransfersBtn.addEventListener('click', clearCompletedTransfers);
+    }
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            fileSearchQuery = searchInput.value.trim().toLowerCase();
+            renderFiles();
+        });
+    }
 
     // Navigation
     document.querySelectorAll('.nav-item').forEach(item => {
@@ -206,6 +224,7 @@ function showApp() {
     registerModal.style.display = 'none';
     app.classList.remove('hidden');
     userInfo.textContent = `${currentUser.username} (${formatBytes(currentUser.storage_used)} / ${formatBytes(currentUser.storage_quota)})`;
+    updateStorageMeter();
     isAdmin = !!currentUser.is_admin;
     document.body.classList.toggle('is-admin', isAdmin);
     // If a non-admin was left on the users view, fall back to files
@@ -228,6 +247,10 @@ function switchView(view) {
         case 'shares':
             document.getElementById('sharesView').classList.remove('hidden');
             loadShares();
+            break;
+        case 'transfers':
+            document.getElementById('transfersView').classList.remove('hidden');
+            renderTransfers();
             break;
         case 'users':
             document.getElementById('usersView').classList.remove('hidden');
@@ -289,27 +312,41 @@ async function loadFiles() {
 }
 
 function renderFiles() {
-    if (files.length === 0) {
+    const visibleFiles = files.filter(file => {
+        const inCurrentFolder = (file.parent_id || null) === currentFolderId;
+        const matchesSearch = !fileSearchQuery || file.name.toLowerCase().includes(fileSearchQuery);
+        return inCurrentFolder && matchesSearch;
+    });
+    renderBreadcrumb();
+
+    if (visibleFiles.length === 0) {
         fileList.innerHTML = `
             <div class="empty-state">
-                <div class="icon">📂</div>
-                <p>暂无文件，上传一个文件或创建文件夹开始使用</p>
+                <div class="icon">□</div>
+                <p>${fileSearchQuery ? '没有匹配的文件' : currentFolderId ? '此文件夹为空' : '暂无文件，上传一个文件或创建文件夹开始使用'}</p>
             </div>
         `;
         return;
     }
 
-    fileList.innerHTML = files.map(file => `
-        <div class="file-item" data-id="${file.id}" data-folder="${file.is_folder}">
-            <span class="file-icon">${file.is_folder ? '📁' : getFileIcon(file.mime_type)}</span>
+    fileList.innerHTML = `
+        <div class="file-list-header">
+            <span>名称</span>
+            <span>大小</span>
+            <span>操作</span>
+        </div>
+        ${visibleFiles.map(file => `
+        <div class="file-item" data-id="${file.id}" data-folder="${file.is_folder}" title="${escapeAttribute(file.name)}">
+            <span class="file-icon">${file.is_folder ? '▣' : getFileIcon(file.mime_type)}</span>
             <span class="file-name">${escapeHtml(file.name)}</span>
-            <span class="file-meta">${file.is_folder ? '' : formatBytes(file.size)}</span>
+            <span class="file-meta">${file.is_folder ? '文件夹' : formatBytes(file.size)}</span>
             <div class="file-actions">
                 ${!file.is_folder ? `<button class="action-btn" onclick="downloadFile('${file.id}')">下载</button>` : ''}
                 <button class="action-btn danger" onclick="deleteFileById('${file.id}')">删除</button>
             </div>
         </div>
-    `).join('');
+        `).join('')}
+    `;
 
     // Add click handlers
     fileList.querySelectorAll('.file-item').forEach(item => {
@@ -327,6 +364,32 @@ function renderFiles() {
     });
 }
 
+function renderBreadcrumb() {
+    if (!folderBreadcrumb) return;
+
+    const parts = [
+        '<button class="breadcrumb-item" data-index="-1">根目录</button>',
+        ...folderStack.map((folder, index) => (
+            `<span class="breadcrumb-separator">/</span><button class="breadcrumb-item" data-index="${index}">${escapeHtml(folder.name)}</button>`
+        )),
+    ];
+
+    folderBreadcrumb.innerHTML = parts.join('');
+    folderBreadcrumb.querySelectorAll('.breadcrumb-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const index = Number(item.dataset.index);
+            if (index === -1) {
+                currentFolderId = null;
+                folderStack = [];
+            } else {
+                folderStack = folderStack.slice(0, index + 1);
+                currentFolderId = folderStack[index].id;
+            }
+            renderFiles();
+        });
+    });
+}
+
 async function createFolder() {
     const name = prompt('请输入文件夹名称：');
     if (!name) return;
@@ -335,7 +398,7 @@ async function createFolder() {
         const res = await fetch(`${API_BASE}/api/files`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...getAuth() },
-            body: JSON.stringify({ name, is_folder: true })
+            body: JSON.stringify({ name, parent_id: currentFolderId, is_folder: true })
         });
         if (!res.ok) {
             const data = await res.json();
@@ -352,32 +415,17 @@ async function handleFileUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
 
-    try {
-        // Backend expects the raw file bytes with the name in the query string
-        const res = await fetch(`${API_BASE}/api/files/upload?filename=${encodeURIComponent(file.name)}`, {
-            method: 'POST',
-            headers: getAuth(),
-            body: file
-        });
-
-        if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.message || '上传失败');
-        }
-        showToast('文件上传成功', 'success');
-        loadFiles();
-    } catch (err) {
-        showToast(err.message, 'error');
-    }
+    startUploadTransfer(file, currentFolderId);
     e.target.value = '';
 }
 
 function openFile(file) {
     if (file.is_folder) {
-        // For now, just show a toast - could implement folder browsing later
-        showToast(`正在打开文件夹: ${file.name}`, 'success');
+        currentFolderId = file.id;
+        folderStack.push({ id: file.id, name: file.name });
+        renderFiles();
     } else {
-        downloadFile(file.id);
+        downloadFile(file.id, file.name);
     }
 }
 
@@ -428,23 +476,329 @@ async function deleteFile(file) {
     }
 }
 
-async function downloadFile(id) {
-    try {
-        const res = await fetch(`${API_BASE}/api/files/${id}/download`, { headers: getAuth() });
-        if (!res.ok) throw new Error('下载失败');
+async function downloadFile(id, filename) {
+    const file = files.find(item => item.id === id);
+    startDownloadTransfer({
+        id,
+        name: filename || file?.name || 'download',
+        size: file?.size || 0,
+    });
+}
 
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = '';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
+function getDownloadName(response) {
+    const disposition = response.headers.get('Content-Disposition');
+    if (!disposition) return null;
+
+    const utf8Match = disposition.match(/filename\\*=UTF-8''([^;]+)/i);
+    if (utf8Match) return decodeURIComponent(utf8Match[1]);
+
+    const asciiMatch = disposition.match(/filename="?([^"]+)"?/i);
+    return asciiMatch ? asciiMatch[1] : null;
+}
+
+function createTransfer(type, name, total) {
+    const transfer = {
+        id: `${type}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        type,
+        name,
+        total,
+        transferred: 0,
+        speed: 0,
+        status: 'queued',
+        message: '等待中',
+        controller: null,
+        chunks: [],
+        file: null,
+        fileId: null,
+        parentId: null,
+        uploadId: null,
+        startedAt: Date.now(),
+        updatedAt: Date.now(),
+    };
+
+    transferRecords.unshift(transfer);
+    renderTransfers();
+    return transfer;
+}
+
+async function startUploadTransfer(file, parentId) {
+    const transfer = createTransfer('upload', file.name, file.size);
+    transfer.file = file;
+    transfer.parentId = parentId;
+
+    switchView('transfers');
+
+    try {
+        transfer.status = 'running';
+        transfer.message = '初始化上传';
+        renderTransfers();
+
+        const initRes = await fetch(`${API_BASE}/api/files/uploads/init`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getAuth() },
+            body: JSON.stringify({
+                filename: file.name,
+                parent_id: parentId,
+                size: file.size,
+            }),
+        });
+
+        if (!initRes.ok) {
+            const data = await initRes.json();
+            throw new Error(data.message || '上传初始化失败');
+        }
+
+        const initData = await initRes.json();
+        transfer.uploadId = initData.upload_id;
+        transfer.transferred = initData.uploaded_bytes || 0;
+        await runUploadTransfer(transfer);
     } catch (err) {
-        showToast(err.message, 'error');
+        if (transfer.status !== 'paused') {
+            markTransferError(transfer, err.message);
+        }
     }
+}
+
+async function runUploadTransfer(transfer) {
+    if (!transfer.file || !transfer.uploadId) return;
+
+    transfer.status = 'running';
+    transfer.message = '上传中';
+    let lastBytes = transfer.transferred;
+    let lastTime = performance.now();
+    renderTransfers();
+
+    while (transfer.transferred < transfer.total) {
+        if (transfer.status !== 'running') return;
+
+        const offset = transfer.transferred;
+        const chunk = transfer.file.slice(offset, Math.min(offset + CHUNK_SIZE, transfer.total));
+        transfer.controller = new AbortController();
+
+        try {
+            const res = await fetch(`${API_BASE}/api/files/uploads/${transfer.uploadId}/chunk?offset=${offset}`, {
+                method: 'POST',
+                headers: getAuth(),
+                body: chunk,
+                signal: transfer.controller.signal,
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.message || '上传分片失败');
+            }
+
+            const data = await res.json();
+            transfer.transferred = data.uploaded_bytes;
+            updateTransferSpeed(transfer, lastBytes, lastTime);
+            lastBytes = transfer.transferred;
+            lastTime = performance.now();
+            renderTransfers();
+        } catch (err) {
+            if (transfer.status === 'paused' || err.name === 'AbortError') return;
+            throw err;
+        }
+    }
+
+    transfer.message = '合并文件';
+    renderTransfers();
+
+    const completeRes = await fetch(`${API_BASE}/api/files/uploads/${transfer.uploadId}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuth() },
+        body: JSON.stringify({
+            filename: transfer.file.name,
+            parent_id: transfer.parentId,
+            size: transfer.file.size,
+        }),
+    });
+
+    if (!completeRes.ok) {
+        const data = await completeRes.json();
+        throw new Error(data.message || '完成上传失败');
+    }
+
+    transfer.status = 'done';
+    transfer.message = '上传完成';
+    transfer.speed = 0;
+    renderTransfers();
+    loadFiles();
+}
+
+async function startDownloadTransfer(file) {
+    const transfer = createTransfer('download', file.name, file.size);
+    transfer.fileId = file.id;
+    transfer.chunks = [];
+
+    switchView('transfers');
+    await runDownloadTransfer(transfer);
+}
+
+async function runDownloadTransfer(transfer) {
+    transfer.status = 'running';
+    transfer.message = '下载中';
+    let lastBytes = transfer.transferred;
+    let lastTime = performance.now();
+    renderTransfers();
+
+    try {
+        while (transfer.transferred < transfer.total) {
+            if (transfer.status !== 'running') return;
+
+            const start = transfer.transferred;
+            const end = Math.min(start + CHUNK_SIZE - 1, transfer.total - 1);
+            transfer.controller = new AbortController();
+
+            const res = await fetch(`${API_BASE}/api/files/${transfer.fileId}/download`, {
+                headers: {
+                    ...getAuth(),
+                    Range: `bytes=${start}-${end}`,
+                },
+                signal: transfer.controller.signal,
+            });
+
+            if (!(res.ok || res.status === 206)) {
+                throw new Error('下载失败');
+            }
+
+            const buffer = await res.arrayBuffer();
+            transfer.chunks.push(buffer);
+            transfer.transferred += buffer.byteLength;
+            updateTransferSpeed(transfer, lastBytes, lastTime);
+            lastBytes = transfer.transferred;
+            lastTime = performance.now();
+            renderTransfers();
+        }
+
+        const blob = new Blob(transfer.chunks);
+        saveBlob(blob, transfer.name);
+        transfer.status = 'done';
+        transfer.message = '下载完成';
+        transfer.speed = 0;
+        renderTransfers();
+    } catch (err) {
+        if (transfer.status === 'paused' || err.name === 'AbortError') return;
+        markTransferError(transfer, err.message);
+    }
+}
+
+function pauseTransfer(id) {
+    const transfer = transferRecords.find(item => item.id === id);
+    if (!transfer || transfer.status !== 'running') return;
+
+    transfer.status = 'paused';
+    transfer.message = '已暂停';
+    transfer.speed = 0;
+    if (transfer.controller) transfer.controller.abort();
+    renderTransfers();
+}
+
+function resumeTransfer(id) {
+    const transfer = transferRecords.find(item => item.id === id);
+    if (!transfer || transfer.status !== 'paused') return;
+
+    if (transfer.type === 'upload') {
+        runUploadTransfer(transfer).catch(err => markTransferError(transfer, err.message));
+    } else {
+        runDownloadTransfer(transfer);
+    }
+}
+
+function cancelTransfer(id) {
+    const transfer = transferRecords.find(item => item.id === id);
+    if (!transfer) return;
+
+    transfer.status = 'cancelled';
+    transfer.message = '已取消';
+    transfer.speed = 0;
+    if (transfer.controller) transfer.controller.abort();
+    renderTransfers();
+}
+
+function clearCompletedTransfers() {
+    transferRecords = transferRecords.filter(item => !['done', 'error', 'cancelled'].includes(item.status));
+    renderTransfers();
+}
+
+function updateTransferSpeed(transfer, lastBytes, lastTime) {
+    const now = performance.now();
+    const seconds = Math.max((now - lastTime) / 1000, 0.001);
+    transfer.speed = Math.max(0, (transfer.transferred - lastBytes) / seconds);
+    transfer.updatedAt = Date.now();
+}
+
+function markTransferError(transfer, message) {
+    transfer.status = 'error';
+    transfer.message = message || '传输失败';
+    transfer.speed = 0;
+    renderTransfers();
+}
+
+function renderTransfers() {
+    if (!transferList) return;
+
+    if (transferRecords.length === 0) {
+        transferList.innerHTML = `
+            <div class="empty-state">
+                <div class="icon">⇅</div>
+                <p>暂无传输记录</p>
+            </div>
+        `;
+        return;
+    }
+
+    transferList.innerHTML = transferRecords.map(transfer => {
+        const percent = transfer.total > 0 ? Math.min(100, (transfer.transferred / transfer.total) * 100) : 0;
+        const verb = transfer.type === 'upload' ? '上传' : '下载';
+        const canPause = transfer.status === 'running';
+        const canResume = transfer.status === 'paused';
+        const canCancel = ['queued', 'running', 'paused'].includes(transfer.status);
+
+        return `
+            <div class="transfer-item">
+                <div class="transfer-icon">${transfer.type === 'upload' ? '⇧' : '⇩'}</div>
+                <div class="transfer-main">
+                    <div class="transfer-title-row">
+                        <strong title="${escapeAttribute(transfer.name)}">${escapeHtml(transfer.name)}</strong>
+                        <span>${verb} · ${transferStatusText(transfer.status)}</span>
+                    </div>
+                    <div class="transfer-progress"><span style="width:${percent}%"></span></div>
+                    <div class="transfer-meta">
+                        <span>${formatBytes(transfer.transferred)} / ${formatBytes(transfer.total)}</span>
+                        <span>${transfer.speed > 0 ? `${formatBytes(transfer.speed)}/s` : transfer.message}</span>
+                    </div>
+                </div>
+                <div class="transfer-actions">
+                    ${canPause ? `<button class="action-btn" onclick="pauseTransfer('${transfer.id}')">暂停</button>` : ''}
+                    ${canResume ? `<button class="action-btn" onclick="resumeTransfer('${transfer.id}')">继续</button>` : ''}
+                    ${canCancel ? `<button class="action-btn danger" onclick="cancelTransfer('${transfer.id}')">取消</button>` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function transferStatusText(status) {
+    const labels = {
+        queued: '等待中',
+        running: '进行中',
+        paused: '已暂停',
+        done: '已完成',
+        error: '失败',
+        cancelled: '已取消',
+    };
+    return labels[status] || status;
+}
+
+function saveBlob(blob, filename) {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
 }
 
 function showMoveModal(file) {
@@ -645,15 +999,25 @@ function getAuth() {
 }
 
 function getFileIcon(mimeType) {
-    if (!mimeType) return '📄';
-    if (mimeType.startsWith('image/')) return '🖼️';
-    if (mimeType.startsWith('video/')) return '🎬';
-    if (mimeType.startsWith('audio/')) return '🎵';
-    if (mimeType.includes('pdf')) return '📕';
-    if (mimeType.includes('word') || mimeType.includes('document')) return '📝';
-    if (mimeType.includes('sheet') || mimeType.includes('excel')) return '📊';
-    if (mimeType.includes('zip') || mimeType.includes('archive')) return '📦';
-    return '📄';
+    if (!mimeType) return '□';
+    if (mimeType.startsWith('image/')) return '◫';
+    if (mimeType.startsWith('video/')) return '▷';
+    if (mimeType.startsWith('audio/')) return '♪';
+    if (mimeType.includes('pdf')) return 'PDF';
+    if (mimeType.includes('word') || mimeType.includes('document')) return 'DOC';
+    if (mimeType.includes('sheet') || mimeType.includes('excel')) return 'XLS';
+    if (mimeType.includes('zip') || mimeType.includes('archive')) return 'ZIP';
+    return '□';
+}
+
+function updateStorageMeter() {
+    const footerValue = document.querySelector('.sidebar-footer strong');
+    const meter = document.querySelector('.storage-meter span');
+    if (!currentUser || !footerValue || !meter) return;
+
+    footerValue.textContent = `${formatBytes(currentUser.storage_used)} / ${formatBytes(currentUser.storage_quota)}`;
+    const ratio = currentUser.storage_quota > 0 ? currentUser.storage_used / currentUser.storage_quota : 0;
+    meter.style.width = `${Math.min(100, Math.max(0, ratio * 100))}%`;
 }
 
 function formatBytes(bytes) {
@@ -670,9 +1034,16 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function escapeAttribute(text) {
+    return escapeHtml(text).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 // Make functions globally accessible
 window.downloadFile = downloadFile;
 window.deleteFileById = deleteFileById;
 window.copyShareLink = copyShareLink;
 window.deleteShare = deleteShare;
 window.deleteUser = deleteUser;
+window.pauseTransfer = pauseTransfer;
+window.resumeTransfer = resumeTransfer;
+window.cancelTransfer = cancelTransfer;
