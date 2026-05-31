@@ -169,6 +169,21 @@
     <!-- Toast Notifications -->
     <div id="toast" class="toast hidden"></div>
 
+    <!-- Video Player -->
+    <div id="videoPlayerView" class="player-view hidden">
+        <div class="player-shell">
+            <div class="player-topbar">
+                <div>
+                    <span class="player-kicker">正在播放</span>
+                    <h3 id="videoPlayerTitle">视频</h3>
+                </div>
+                <button id="closePlayerBtn" class="btn-secondary">关闭</button>
+            </div>
+            <video id="videoPlayer" controls playsinline preload="metadata"></video>
+            <div id="videoPlayerHint" class="player-hint hidden"></div>
+        </div>
+    </div>
+
     <!-- Settings Modal -->
     <div id="settingsModal" class="modal hidden">
         <div class="modal-content">
@@ -182,6 +197,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=14"></script>
+    <script src="app.js?v=15"></script>
 </body>
 </html>

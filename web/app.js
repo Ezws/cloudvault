@@ -45,6 +45,10 @@ const transferList = document.getElementById('transferList');
 const userList = document.getElementById('userList');
 const contextMenu = document.getElementById('contextMenu');
 const toast = document.getElementById('toast');
+const videoPlayerView = document.getElementById('videoPlayerView');
+const videoPlayer = document.getElementById('videoPlayer');
+const videoPlayerTitle = document.getElementById('videoPlayerTitle');
+const videoPlayerHint = document.getElementById('videoPlayerHint');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -73,6 +77,7 @@ function setupEventListeners() {
     });
     document.getElementById('logoutBtn').addEventListener('click', handleLogout);
     document.getElementById('settingsBtn').addEventListener('click', showSettingsModal);
+    document.getElementById('closePlayerBtn').addEventListener('click', closeVideoPlayer);
 
     // File operations
     document.getElementById('createFolderBtn').addEventListener('click', () => createFolder());
@@ -357,6 +362,16 @@ function renderFiles() {
                 openFile(file);
             }
         });
+        item.addEventListener('dblclick', (e) => {
+            if (e.target.closest('.action-btn')) return;
+            const file = files.find(f => f.id === item.dataset.id);
+            if (!file) return;
+            if (file.is_folder) {
+                openFile(file);
+            } else if (isVideoFile(file)) {
+                openVideoPlayer(file);
+            }
+        });
         item.addEventListener('contextmenu', (e) => {
             const file = files.find(f => f.id === item.dataset.id);
             showContextMenu(e, file);
@@ -424,9 +439,37 @@ function openFile(file) {
         currentFolderId = file.id;
         folderStack.push({ id: file.id, name: file.name });
         renderFiles();
+    } else if (isVideoFile(file)) {
+        openVideoPlayer(file);
     } else {
         downloadFile(file.id, file.name);
     }
+}
+
+function openVideoPlayer(file) {
+    if (!token) {
+        showToast('请先登录后播放视频', 'error');
+        return;
+    }
+
+    videoPlayerTitle.textContent = file.name;
+    videoPlayerHint.classList.add('hidden');
+    videoPlayerHint.textContent = '';
+    videoPlayer.src = `${API_BASE}/api/files/${file.id}/download?access_token=${encodeURIComponent(token)}`;
+    videoPlayerView.classList.remove('hidden');
+    videoPlayer.load();
+
+    videoPlayer.play().catch(() => {
+        videoPlayerHint.textContent = '浏览器已阻止自动播放，请点击播放按钮继续。';
+        videoPlayerHint.classList.remove('hidden');
+    });
+}
+
+function closeVideoPlayer() {
+    videoPlayer.pause();
+    videoPlayer.removeAttribute('src');
+    videoPlayer.load();
+    videoPlayerView.classList.add('hidden');
 }
 
 function promptRename(file) {
@@ -1008,6 +1051,13 @@ function getFileIcon(mimeType) {
     if (mimeType.includes('sheet') || mimeType.includes('excel')) return 'XLS';
     if (mimeType.includes('zip') || mimeType.includes('archive')) return 'ZIP';
     return '□';
+}
+
+function isVideoFile(file) {
+    if (file.mime_type && file.mime_type.startsWith('video/')) return true;
+
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    return ['mp4', 'mkv', 'webm', 'mov', 'm4v', 'avi', 'mpeg', 'mpg', 'ogv'].includes(extension);
 }
 
 function updateStorageMeter() {

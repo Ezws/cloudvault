@@ -37,13 +37,30 @@ pub async fn jwt_auth_layer(
         return next.run(request).await;
     }
 
+    let query_token = if path.starts_with("/api/files/") && path.ends_with("/download") {
+        request
+            .uri()
+            .query()
+            .and_then(|query| query.split('&').find_map(|pair| {
+                let (key, value) = pair.split_once('=')?;
+                if key == "access_token" {
+                    Some(value.to_string())
+                } else {
+                    None
+                }
+            }))
+    } else {
+        None
+    };
+
     let auth_header = request
         .headers()
         .get("Authorization")
         .and_then(|v| v.to_str().ok());
 
-    let token = match auth_header {
-        Some(header) if header.starts_with("Bearer ") => &header[7..],
+    let token = match (auth_header, query_token.as_deref()) {
+        (Some(header), _) if header.starts_with("Bearer ") => &header[7..],
+        (_, Some(token)) if !token.is_empty() => token,
         _ => {
             return Response::builder()
                 .status(StatusCode::UNAUTHORIZED)
